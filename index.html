@@ -148,6 +148,10 @@
             }
         });
 
+        function flipYCoords(y) {
+            return canvas.height-y;
+        }
+
         function drawSmooth(x, y) {
             if (!isDrawing) return;
 
@@ -167,11 +171,11 @@
             // Save the curve data, including the timestamp
             currentStroke.push({
                 controlX,
-                controlY,
+                controlY: flipYCoords(controlY),
                 lastX,
-                lastY,
+                lastY: flipYCoords(lastY),
                 midX,
-                midY,
+                midY: flipYCoords(midY),
                 timestamp: now,
             });
 
@@ -283,17 +287,22 @@
             const startX = machineStart[0];
             const startY = machineStart[1];
 
-            // raise Z and go to starting position
+            // go to safe Z and move to starting position
             gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
             gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
 
-            //strokes.forEach((stroke, strokeIndex) => {
-            //    const startTime = stroke[0].timestamp;
-            //    stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
-            //        const relativeTime = (timestamp - startTime);
-            //        gcode.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
-            //    });
-            //});
+            strokes.forEach((stroke, strokeIndex) => {
+                const startTime = stroke[0].timestamp;
+                stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
+                    const relativeTime = (timestamp - startTime);
+
+                    gcode.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
+                });
+            });
+
+            gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
+            gcode.push('G0 X0 Y0');
+            gcode.push('M2');
 
             const gcodeContent = gcode.join(';\n');
             const blob = new Blob([gcodeContent], { type: 'text/csv;charset=utf-8;' });
