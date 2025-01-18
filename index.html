@@ -332,7 +332,7 @@
             gcode.push('M30');
 
             const gcodeContent = gcode.join(';\n');
-            const blob = new Blob([gcodeContent], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([gcodeContent], { type: 'text/nc;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
 
             const link = document.createElement('a');
