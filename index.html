@@ -309,7 +309,7 @@
                 // rapid move to beginning of stroke
                 gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
                 // feed to Z0
-                gcode.push(`G1 Z0 F50`);
+                gcode.push(`G1 Z0 F1200`);
                 stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
                     if (timestamp === startTime) return;
                     const relativeTime = (timestamp - startTime);
