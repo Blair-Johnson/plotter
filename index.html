@@ -64,6 +64,7 @@
         </select>
 
 
+        <!--
         <label for="minimumChordLength">Minimum Chord Length:</label>
         <input type="number" id="minimumChordLength" placeholder="e.g. 0.25 (Machine Units)" value="0.25" min="0">
 
@@ -78,6 +79,7 @@
 
         <label for="maximumCircularSweep">Maximum Circular Sweep:</label>
         <input type="number" id="maximumCircularSweep" placeholder="e.g. 3.141593 radians" value="3.141593" min="0">
+        -->
     </div>
     <script>
         const canvas = document.getElementById('drawingCanvas');
@@ -87,11 +89,13 @@
         const machineUnitsInput = document.getElementById('machineUnits');
         const boundingBoxInput = document.getElementById('boundingBox');
         const retractHeightInput = document.getElementById('retractHeight');
+        /*
         const minimumChordLength = document.getElementById('minimumChordLength');
         const minimumCircularRadius = document.getElementById('minimumCircularRadius');
         const maximumCircularRadius = document.getElementById('maximumCircularRadius');
         const minimumCircularSweep = document.getElementById('minimumCircularSweep');
         const maximumCircularSweep = document.getElementById('maximumCircularSweep');
+        */
 
         // Set canvas size
         canvas.width = window.innerWidth * 0.8;
@@ -262,6 +266,14 @@
             return feedrate*60000;
         }
         function exportToGCode() {
+            if (boundingBox.value === ""){
+                alert("You must specify a size for the drawing in machine units.");
+                return;
+            };
+            if (retractHeight.value === ""){
+                alert("You must specify a retract height for the toolpath in machine units.");
+                return;
+            };
             const gcode = [];
 
             // set absolute positioning
@@ -330,6 +342,8 @@
 
             gcode.push('G0 X0 Y0');
             gcode.push('M30');
+
+            alert("Read and simulate GCode before running on your machine!");
 
             const gcodeContent = gcode.join(';\n');
             const blob = new Blob([gcodeContent], { type: 'text/nc;charset=utf-8;' });
