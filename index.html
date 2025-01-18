@@ -3,38 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drawing with Undo</title>
+    <title>Drawing to GCode</title>
     <style>
         body {
-            margin: 0;
             display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            justify-content: flex-start;
+            align-items: flex-start;
+            margin: 0;
+            padding: 20px;
             background-color: #f0f0f0;
+            gap: 20px; /* Space between canvas and controls */
         }
         canvas {
             border: 1px solid #000;
             touch-action: none; /* Prevent scrolling on touch devices */
         }
-        button {
-            margin-top: 10px;
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .controls label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .controls select, .controls input {
+            padding: 5px;
+            font-size: 14px;
+            width: 200px;
+        }
+        .controls input {
+            padding: 5px;
+            font-size: 14px;
+            width: 150px;
+        }
+        .controls button {
             padding: 10px 20px;
             font-size: 16px;
             cursor: pointer;
         }
     </style>
+    </style>
 </head>
 <body>
     <canvas id="drawingCanvas"></canvas>
-    <button id="undoButton">Undo Last Stroke</button>
-    <button id="exportButton">Export as CSV</button>
+        <div class="controls">
+        <button id="undoButton">Undo Last Stroke</button>
+        <button id="exportButton">Export as CSV</button>
+        <h3>Toolpath Settings</h3>
+        <label for="boundingBox">Bounding Box Width:</label>
+        <input type="text" id="boundingBox" placeholder="e.g., 100 (Machine Units)">
+
+        <label for="retractHeight">Retract Height:</label>
+        <input type="number" id="retractHeight" placeholder="e.g., 5 (Machine Units)" min="0">
+        <h3>Machine Settings</h3>
+
+        <label for="machineUnits">Machine Units:</label>
+        <select id="machineUnits">
+            <option value="mm">Millimeters (mm)</option>
+            <option value="in">Inches (in)</option>
+        </select>
+
+
+        <label for="minimumChordLength">Minimum Chord Length:</label>
+        <input type="number" id="minimumChordLength" placeholder="e.g. 0.25 (Machine Units)" value="0.25" min="0">
+
+        <label for="minimumCircularRadius">Minimum Circular Radius:</label>
+        <input type="number" id="minimumCircularRadius" placeholder="e.g. 0.01 (Machine Units)" value="0.01" min="0">
+
+        <label for="maximumCircularRadius">Maximum Circular Radius:</label>
+        <input type="number" id="maximumCircularRadius" placeholder="e.g. 1000 (Machine Units)" value="1000" min="0">
+
+        <label for="minimumCircularSweep">Minimum Circular Sweep:</label>
+        <input type="number" id="minimumCircularSweep" placeholder="e.g. 0.0001745 radians" value="0.0001745" min="0">
+
+        <label for="maximumCircularSweep">Maximum Circular Sweep:</label>
+        <input type="number" id="maximumCircularSweep" placeholder="e.g. 3.141593 radians" value="3.141593" min="0">
+    </div>
     <script>
         const canvas = document.getElementById('drawingCanvas');
         const ctx = canvas.getContext('2d');
         const undoButton = document.getElementById('undoButton');
         const exportButton = document.getElementById('exportButton');
+        const machineUnitsInput = document.getElementById('machineUnits');
+        const boundingBoxInput = document.getElementById('boundingBox');
+        const retractHeightInput = document.getElementById('retractHeight');
+        const minimumChordLength = document.getElementById('minimumChordLength');
+        const minimumCircularRadius = document.getElementById('minimumCircularRadius');
+        const maximumCircularRadius = document.getElementById('maximumCircularRadius');
+        const minimumCircularSweep = document.getElementById('minimumCircularSweep');
+        const maximumCircularSweep = document.getElementById('maximumCircularSweep');
 
         // Set canvas size
         canvas.width = window.innerWidth * 0.8;
@@ -176,7 +234,7 @@
             document.body.removeChild(link);
         }
         function exportToGCode() {
-            const lines = [];
+            const lines = ['G21','G17','G90'];
 
             strokes.forEach((stroke, strokeIndex) => {
                 const startTime = stroke[0].timestamp;
