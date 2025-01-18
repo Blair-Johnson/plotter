@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing with Undo</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid #000;
+            touch-action: none; /* Prevent scrolling on touch devices */
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="drawingCanvas"></canvas>
+    <button id="undoButton">Undo Last Stroke</button>
+    <button id="exportButton">Export as CSV</button>
+    <script>
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+        const undoButton = document.getElementById('undoButton');
+        const exportButton = document.getElementById('exportButton');
+
+        // Set canvas size
+        canvas.width = window.innerWidth * 0.8;
+        canvas.height = window.innerHeight * 0.8;
+
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let controlX = 0;
+        let controlY = 0;
+        const strokes = []; // Array to store all strokes
+        let currentStroke = []; // Current stroke being drawn
+
+        // Start drawing
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            [lastX, lastY] = [e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop];
+            [controlX, controlY] = [lastX, lastY];
+            currentStroke = []; // Start a new stroke
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            isDrawing = true;
+            const touch = e.touches[0];
+            [lastX, lastY] = [touch.clientX - canvas.offsetLeft, touch.clientY - canvas.offsetTop];
+            [controlX, controlY] = [lastX, lastY];
+            currentStroke = []; // Start a new stroke
+        });
+
+        // Stop drawing
+        canvas.addEventListener('mouseup', () => {
+            if (isDrawing) {
+                isDrawing = false;
+                strokes.push([...currentStroke]); // Save the completed stroke
+            }
+        });
+
+        canvas.addEventListener('mouseout', () => isDrawing = false);
+        canvas.addEventListener('touchend', () => {
+            if (isDrawing) {
+                isDrawing = false;
+                strokes.push([...currentStroke]); // Save the completed stroke
+            }
+        });
+
+        // Draw
+        canvas.addEventListener('mousemove', (e) => drawSmooth(e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop));
+        canvas.addEventListener('touchmove', (e) => {
+            if (isDrawing) {
+                e.preventDefault(); // Prevent scrolling
+                const touch = e.touches[0];
+                drawSmooth(touch.clientX - canvas.offsetLeft, touch.clientY - canvas.offsetTop);
+            }
+        });
+
+        function drawSmooth(x, y) {
+            if (!isDrawing) return;
+
+            const now = performance.now(); // High-resolution timestamp
+            const midX = (lastX + x) / 2;
+            const midY = (lastY + y) / 2;
+
+            // Draw the Bézier curve on the canvas
+            ctx.beginPath();
+            ctx.moveTo(controlX, controlY);
+            ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Save the curve data, including the timestamp
+            currentStroke.push({
+                controlX,
+                controlY,
+                lastX,
+                lastY,
+                midX,
+                midY,
+                timestamp: now,
+            });
+
+            [controlX, controlY] = [midX, midY];
+            [lastX, lastY] = [x, y];
+        }
+
+        // Undo function
+        undoButton.addEventListener('click', () => {
+            if (strokes.length === 0) return; // No strokes to undo
+
+            strokes.pop(); // Remove the last stroke
+            redrawCanvas();
+        });
+
+        // Export Stroke
+        exportButton.addEventListener('click', () => {
+            if (strokes.length === 0) return; // No strokes to export
+            exportToCSV();
+        });
+
+        // Redraw the canvas from the strokes array
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            strokes.forEach(stroke => {
+                ctx.beginPath();
+                stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY }, index) => {
+                    if (index === 0) {
+                        ctx.moveTo(controlX, controlY);
+                    }
+                    ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+                });
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            });
+        }
+        function exportToCSV() {
+            const headers = ['strokeIndex', 'controlX', 'controlY', 'lastX', 'lastY', 'midX', 'midY', 'timestamp'];
+            const rows = [headers.join(',')]; // Initialize with headers
+
+            strokes.forEach((stroke, strokeIndex) => {
+                const startTime = stroke[0].timestamp;
+                stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
+                    const relativeTime = (timestamp - startTime);
+                    rows.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
+                });
+            });
+
+            const csvContent = rows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'trajectories.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+</body>
+</html>
+
