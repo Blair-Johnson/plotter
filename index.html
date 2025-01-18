@@ -43,7 +43,6 @@
             cursor: pointer;
         }
     </style>
-    </style>
 </head>
 <body>
     <canvas id="drawingCanvas"></canvas>
@@ -52,7 +51,7 @@
         <button id="exportButton">Export as CSV</button>
         <h3>Toolpath Settings</h3>
         <label for="boundingBox">Bounding Box Width:</label>
-        <input type="text" id="boundingBox" placeholder="e.g., 100 (Machine Units)">
+        <input type="number" id="boundingBox" placeholder="e.g., 100 (Machine Units)">
 
         <label for="retractHeight">Retract Height:</label>
         <input type="number" id="retractHeight" placeholder="e.g., 5 (Machine Units)" min="0">
@@ -103,6 +102,7 @@
         let lastY = 0;
         let controlX = 0;
         let controlY = 0;
+        let decimals = 4;
         const strokes = []; // Array to store all strokes
         let currentStroke = []; // Current stroke being drawn
 
@@ -190,7 +190,8 @@
         // Export Stroke
         exportButton.addEventListener('click', () => {
             if (strokes.length === 0) return; // No strokes to export
-            exportToCSV();
+            //exportToCSV();
+            exportToGCode();
         });
 
         // Redraw the canvas from the strokes array
@@ -233,24 +234,74 @@
             link.click();
             document.body.removeChild(link);
         }
-        function exportToGCode() {
-            const lines = ['G21','G17','G90'];
-
-            strokes.forEach((stroke, strokeIndex) => {
-                const startTime = stroke[0].timestamp;
-                stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
-                    const relativeTime = (timestamp - startTime);
-                    rows.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
+        function getBoundingInfo() {
+            let maxX = -Infinity;
+            let minX = Infinity;
+            let minY = Infinity;
+            let startX = 0;
+            let startY = 0;
+            strokes.forEach((stroke, strokeIndex)=> {
+                if (strokeIndex === 0){
+                    startX = stroke[0].lastX;
+                    startY = stroke[0].lastY;
+                };
+                stroke.forEach(({controlX, lastX, midX, controlY, lastY, midY}) => {
+                    maxX = Math.max(maxX, controlX, lastX, midX);
+                    minX = Math.min(minX, controlX, lastX, midX);
+                    minY = Math.min(minY, controlY, lastY, midY);
                 });
             });
+            let maxWidth = (maxX-minX);
+            return [startX, startY, minX, minY, maxWidth];
+        }
+        function getMachineCoords(x, y, minX, minY, scaleFactor) {
+            return [(x-minX)*scaleFactor, (y-minY)*scaleFactor];
+        }
+        function exportToGCode() {
+            const gcode = [];
 
-            const csvContent = rows.join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            // set machine units
+            if (machineUnits === 'mm') {
+                gcode.push('G21');
+            } else if (machineUnits === 'in') {
+                gcode.push('G20');
+            };
+
+            // set XY plane
+            gcode.push('G17');
+
+            // set absolute positioning
+            gcode.push('G90');
+
+            // compute scaling factor
+            const boundingInfo = getBoundingInfo();
+            const minX = boundingInfo[2];
+            const minY = boundingInfo[3];
+            const maxWidth = boundingInfo[4];
+            const scaleFactor = (parseFloat(boundingBox.value) / maxWidth);
+            const machineStart = getMachineCoords(boundingInfo[0], boundingInfo[1], minX, minY, scaleFactor);
+            const startX = machineStart[0];
+            const startY = machineStart[1];
+
+            // raise Z and go to starting position
+            gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
+            gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
+
+            //strokes.forEach((stroke, strokeIndex) => {
+            //    const startTime = stroke[0].timestamp;
+            //    stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
+            //        const relativeTime = (timestamp - startTime);
+            //        gcode.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
+            //    });
+            //});
+
+            const gcodeContent = gcode.join(';\n');
+            const blob = new Blob([gcodeContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
 
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', 'trajectories.csv');
+            link.setAttribute('download', 'paths.nc');
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
