@@ -264,18 +264,28 @@
         function exportToGCode() {
             const gcode = [];
 
-            // set machine units
-            if (machineUnits === 'mm') {
-                gcode.push('G21');
-            } else if (machineUnits === 'in') {
-                gcode.push('G20');
-            };
+            // set absolute positioning
+            gcode.push('G90');
+
+            // set units / min feedrate mode
+            gcode.push('G94');
 
             // set XY plane
             gcode.push('G17');
 
-            // set absolute positioning
-            gcode.push('G90');
+            // set arc mode to relative positioning
+            gcode.push('G91.1')
+
+            // set machine units
+            if (machineUnits.value === 'mm') {
+                gcode.push('G21');
+            } else if (machineUnits.value === 'in') {
+                gcode.push('G20');
+            };
+
+            // select first work coordinate system
+            gcode.push('G54');
+
 
             // compute scaling factor
             const boundingInfo = getBoundingInfo();
@@ -290,17 +300,16 @@
             // go to safe Z
             gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
 
-            // move to Z0 and begin path
-            gcode.push(`G0 Z0`);
             gStrokes.forEach((stroke, strokeIndex) => {
                 const startTime = stroke[0].timestamp;
                 let tprev = startTime
                 let feedrate = 0;
+                let g1 = false;
                 [startX, startY] = getMachineCoords(stroke[0].controlX, stroke[0].controlY, minX, minY, scaleFactor);
                 // rapid move to beginning of stroke
                 gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
                 // feed to Z0
-                gcode.push(`G0 Z0 F50`);
+                gcode.push(`G1 Z0 F50`);
                 stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
                     if (timestamp === startTime) return;
                     const relativeTime = (timestamp - startTime);
@@ -308,14 +317,19 @@
                     [midX, midY] = getMachineCoords(midX, midY, minX, minY, scaleFactor);
                     [controlX, controlY] = getMachineCoords(controlX, controlY, minX, minY, scaleFactor);
                     feedrate = getFeedrate(lastX, lastY, midX, midY, timestamp, tprev);
+                    if (g1){
+                    gcode.push(`X${controlX.toFixed(decimals)} Y${controlY.toFixed(decimals)} F${feedrate.toFixed(decimals)}`);
+                    } else {
                     gcode.push(`G1 X${controlX.toFixed(decimals)} Y${controlY.toFixed(decimals)} F${feedrate.toFixed(decimals)}`);
+                    g1 = true;
+                    };
                     tprev = timestamp;
                 });
                 gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
             });
 
             gcode.push('G0 X0 Y0');
-            gcode.push('M2');
+            gcode.push('M30');
 
             const gcodeContent = gcode.join(';\n');
             const blob = new Blob([gcodeContent], { type: 'text/csv;charset=utf-8;' });
