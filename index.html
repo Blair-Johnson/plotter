@@ -104,7 +104,9 @@
         let controlY = 0;
         let decimals = 4;
         const strokes = []; // Array to store all strokes
-        let currentStroke = []; // Current stroke being drawn
+        const gStrokes = [];
+        let currentStroke = []; 
+        let currentGStroke = []; // Current stroke being drawn
 
         // Start drawing
         canvas.addEventListener('mousedown', (e) => {
@@ -112,6 +114,7 @@
             [lastX, lastY] = [e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop];
             [controlX, controlY] = [lastX, lastY];
             currentStroke = []; // Start a new stroke
+            currentGStroke = []; // Start a new stroke
         });
 
         canvas.addEventListener('touchstart', (e) => {
@@ -120,6 +123,7 @@
             [lastX, lastY] = [touch.clientX - canvas.offsetLeft, touch.clientY - canvas.offsetTop];
             [controlX, controlY] = [lastX, lastY];
             currentStroke = []; // Start a new stroke
+            currentGStroke = []; // Start a new stroke
         });
 
         // Stop drawing
@@ -127,6 +131,7 @@
             if (isDrawing) {
                 isDrawing = false;
                 strokes.push([...currentStroke]); // Save the completed stroke
+                gStrokes.push([...currentGStroke]); // Save the completed stroke
             }
         });
 
@@ -135,6 +140,7 @@
             if (isDrawing) {
                 isDrawing = false;
                 strokes.push([...currentStroke]); // Save the completed stroke
+                gStrokes.push([...currentGStroke]); // Save the completed stroke
             }
         });
 
@@ -171,6 +177,15 @@
             // Save the curve data, including the timestamp
             currentStroke.push({
                 controlX,
+                controlY,
+                lastX,
+                lastY,
+                midX,
+                midY,
+                timestamp: now,
+            });
+            currentGStroke.push({
+                controlX,
                 controlY: flipYCoords(controlY),
                 lastX,
                 lastY: flipYCoords(lastY),
@@ -188,13 +203,13 @@
             if (strokes.length === 0) return; // No strokes to undo
 
             strokes.pop(); // Remove the last stroke
+            gStrokes.pop(); // Remove the last stroke
             redrawCanvas();
         });
 
         // Export Stroke
         exportButton.addEventListener('click', () => {
             if (strokes.length === 0) return; // No strokes to export
-            //exportToCSV();
             exportToGCode();
         });
 
@@ -215,36 +230,13 @@
                 ctx.stroke();
             });
         }
-        function exportToCSV() {
-            const headers = ['strokeIndex', 'controlX', 'controlY', 'lastX', 'lastY', 'midX', 'midY', 'timestamp'];
-            const rows = [headers.join(',')]; // Initialize with headers
-
-            strokes.forEach((stroke, strokeIndex) => {
-                const startTime = stroke[0].timestamp;
-                stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
-                    const relativeTime = (timestamp - startTime);
-                    rows.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
-                });
-            });
-
-            const csvContent = rows.join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', 'trajectories.csv');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
         function getBoundingInfo() {
             let maxX = -Infinity;
             let minX = Infinity;
             let minY = Infinity;
             let startX = 0;
             let startY = 0;
-            strokes.forEach((stroke, strokeIndex)=> {
+            gStrokes.forEach((stroke, strokeIndex)=> {
                 if (strokeIndex === 0){
                     startX = stroke[0].lastX;
                     startY = stroke[0].lastY;
@@ -260,6 +252,14 @@
         }
         function getMachineCoords(x, y, minX, minY, scaleFactor) {
             return [(x-minX)*scaleFactor, (y-minY)*scaleFactor];
+        }
+        function getFeedrate(lastX, lastY, midX, midY, timestamp, tprev){
+            const xdiff = midX - lastX;
+            const ydiff = midY - lastY;
+            const tdiff = timestamp - tprev;
+            const feedrate = Math.sqrt(Math.pow(xdiff, 2) + Math.pow(ydiff, 2))/tdiff;
+            // convert to units/min
+            return feedrate*60000;
         }
         function exportToGCode() {
             const gcode = [];
@@ -284,23 +284,36 @@
             const maxWidth = boundingInfo[4];
             const scaleFactor = (parseFloat(boundingBox.value) / maxWidth);
             const machineStart = getMachineCoords(boundingInfo[0], boundingInfo[1], minX, minY, scaleFactor);
-            const startX = machineStart[0];
-            const startY = machineStart[1];
+            let startX = machineStart[0];
+            let startY = machineStart[1];
 
-            // go to safe Z and move to starting position
+            // go to safe Z
             gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
-            gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
 
-            strokes.forEach((stroke, strokeIndex) => {
+            // move to Z0 and begin path
+            gcode.push(`G0 Z0`);
+            gStrokes.forEach((stroke, strokeIndex) => {
                 const startTime = stroke[0].timestamp;
+                let tprev = startTime
+                let feedrate = 0;
+                [startX, startY] = getMachineCoords(stroke[0].controlX, stroke[0].controlY, minX, minY, scaleFactor);
+                // rapid move to beginning of stroke
+                gcode.push(`G0 X${startX.toFixed(decimals)} Y${startY.toFixed(decimals)}`);
+                // feed to Z0
+                gcode.push(`G0 Z0 F50`);
                 stroke.forEach(({ controlX, controlY, lastX, lastY, midX, midY, timestamp }) => {
+                    if (timestamp === startTime) return;
                     const relativeTime = (timestamp - startTime);
-
-                    gcode.push([strokeIndex, controlX, controlY, lastX, lastY, midX, midY, relativeTime].join(','));
+                    [lastX, lastY] = getMachineCoords(lastX, lastY, minX, minY, scaleFactor);
+                    [midX, midY] = getMachineCoords(midX, midY, minX, minY, scaleFactor);
+                    [controlX, controlY] = getMachineCoords(controlX, controlY, minX, minY, scaleFactor);
+                    feedrate = getFeedrate(lastX, lastY, midX, midY, timestamp, tprev);
+                    gcode.push(`G1 X${controlX.toFixed(decimals)} Y${controlY.toFixed(decimals)} F${feedrate.toFixed(decimals)}`);
+                    tprev = timestamp;
                 });
+                gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
             });
 
-            gcode.push(`G0 Z${parseFloat(retractHeight.value).toFixed(decimals)}`);
             gcode.push('G0 X0 Y0');
             gcode.push('M2');
 
